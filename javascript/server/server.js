@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const { Pool } = require("pg");
-const bcrypt = require("bcrypt"); // pode trocar por bcryptjs se necessário
+const bcrypt = require("bcrypt");
 require("dotenv").config();
 
 const app = express();
@@ -15,7 +15,7 @@ app.use(
     origin: [
       "http://localhost:5501",
       "http://127.0.0.1:5501",
-      "https://donuts-dreamland.onrender.com" // domínio de produção
+      "https://donuts-dreamland.onrender.com"
     ],
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type"],
@@ -23,7 +23,6 @@ app.use(
 );
 
 // ================== SERVIR O FRONTEND ==================
-// Garante que o caminho funcione tanto local quanto no Render
 const rootDir = path.join(__dirname, "../../");
 app.use(express.static(rootDir));
 
@@ -38,17 +37,18 @@ const pool = new Pool({
   host: process.env.DB_HOST || "localhost",
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_DATABASE || "donuts_dreamland",
-  ssl: process.env.DB_HOST ? { rejectUnauthorized: false } : false, // SSL apenas no Render
+  ssl: process.env.DB_HOST ? { rejectUnauthorized: false } : false, // SSL ativo no Render
 });
 
-// Teste de conexão inicial
+// Teste de conexão
 (async () => {
   try {
-    await pool.connect();
+    const client = await pool.connect();
     console.log("✅ Conexão com PostgreSQL bem-sucedida!");
+    client.release();
   } catch (err) {
     console.error("❌ Erro ao conectar ao PostgreSQL:", err.message);
-    console.error("💡 Verifique suas variáveis de ambiente ou o serviço do banco.");
+    console.error("💡 Verifique suas variáveis de ambiente no Render.");
   }
 })();
 
@@ -63,7 +63,6 @@ app.post("/cadastro", async (req, res) => {
 
   try {
     const senhaCriptografada = await bcrypt.hash(senha, 10);
-
     await pool.query(
       "INSERT INTO usuario (email, numero, senha) VALUES ($1, $2, $3)",
       [email, numero, senhaCriptografada]
@@ -75,45 +74,4 @@ app.post("/cadastro", async (req, res) => {
     console.error("💥 Erro no banco de dados:", err.message);
     res.status(500).json({ mensagem: "Erro ao cadastrar usuário." });
   }
-});
-
-// ================== ROTA DE LOGIN ==================
-app.post("/login", async (req, res) => {
-  const { email, senha } = req.body;
-
-  if (!email || !senha) {
-    return res.status(400).json({ erro: "Preencha todos os campos!" });
-  }
-
-  try {
-    const result = await pool.query("SELECT * FROM usuario WHERE email = $1", [email]);
-
-    if (result.rows.length === 0) {
-      return res.status(401).json({ erro: "Usuário não encontrado" });
-    }
-
-    const usuario = result.rows[0];
-    const senhaCorreta = await bcrypt.compare(senha, usuario.senha);
-
-    if (!senhaCorreta) {
-      return res.status(401).json({ erro: "Senha incorreta" });
-    }
-
-    console.log("✅ Login bem-sucedido:", usuario.email);
-    res.json({ mensagem: "Login bem-sucedido", usuario: usuario.email });
-  } catch (err) {
-    console.error("💥 Erro no login:", err.message);
-    res.status(500).json({ erro: "Erro ao fazer login." });
-  }
-});
-
-// ================== ROTA DE TESTE (debug no Render) ==================
-app.get("/ping", (req, res) => {
-  res.send("🏓 Servidor ativo!");
-});
-
-// ================== INICIAR SERVIDOR ==================
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-});
+})
