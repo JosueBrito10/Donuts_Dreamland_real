@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const { Pool } = require("pg");
-const bcrypt = require("bcrypt"); // use bcryptjs se o deploy falhar no Render
+const bcrypt = require("bcrypt"); // pode trocar por bcryptjs se necessário
 require("dotenv").config();
 
 const app = express();
@@ -15,7 +15,7 @@ app.use(
     origin: [
       "http://localhost:5501",
       "http://127.0.0.1:5501",
-      "https://donuts-dreamland.onrender.com" // domínio do site hospedado
+      "https://donuts-dreamland.onrender.com" // domínio de produção
     ],
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type"],
@@ -23,10 +23,12 @@ app.use(
 );
 
 // ================== SERVIR O FRONTEND ==================
-app.use(express.static(path.join(__dirname, "../../"))); // Serve HTML, CSS e JS
+// Garante que o caminho funcione tanto local quanto no Render
+const rootDir = path.join(__dirname, "../../");
+app.use(express.static(rootDir));
 
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "../../index.html"));
+  res.sendFile(path.join(rootDir, "index.html"));
 });
 
 // ================== CONEXÃO COM O BANCO DE DADOS ==================
@@ -36,20 +38,23 @@ const pool = new Pool({
   host: process.env.DB_HOST || "localhost",
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_DATABASE || "donuts_dreamland",
-  ssl: process.env.DB_HOST ? { rejectUnauthorized: false } : false, // SSL só no Render
+  ssl: process.env.DB_HOST ? { rejectUnauthorized: false } : false, // SSL apenas no Render
 });
 
-// Testa conexão ao iniciar
-pool.connect()
-  .then(() => console.log("✅ Conexão com PostgreSQL bem-sucedida!"))
-  .catch((err) => {
+// Teste de conexão inicial
+(async () => {
+  try {
+    await pool.connect();
+    console.log("✅ Conexão com PostgreSQL bem-sucedida!");
+  } catch (err) {
     console.error("❌ Erro ao conectar ao PostgreSQL:", err.message);
-    console.error("💡 Dica: verifique se o PostgreSQL está rodando e se as credenciais estão certas.");
-  });
+    console.error("💡 Verifique suas variáveis de ambiente ou o serviço do banco.");
+  }
+})();
 
 // ================== ROTA DE CADASTRO ==================
 app.post("/cadastro", async (req, res) => {
-  console.log("📩 Dados recebidos do frontend:", req.body);
+  console.log("📩 Dados recebidos:", req.body);
   const { email, numero, senha } = req.body;
 
   if (!email || !numero || !senha) {
@@ -100,6 +105,11 @@ app.post("/login", async (req, res) => {
     console.error("💥 Erro no login:", err.message);
     res.status(500).json({ erro: "Erro ao fazer login." });
   }
+});
+
+// ================== ROTA DE TESTE (debug no Render) ==================
+app.get("/ping", (req, res) => {
+  res.send("🏓 Servidor ativo!");
 });
 
 // ================== INICIAR SERVIDOR ==================
