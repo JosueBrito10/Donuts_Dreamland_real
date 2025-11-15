@@ -1,76 +1,71 @@
+// ================== IMPORTAÇÕES ==================
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const app = express();
-require("dotenv").config();
-
-app.use(cors({
-  origin: [
-    "http://localhost:5501",
-    "http://127.0.0.1:5501",
-    "https://donuts-dreamland-real-6.onrender.com"
-  ],
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
-}));
-
-app.use(express.json());
-
-// =======================
-// SERVE O FRONTEND
-// =======================
-app.use(express.static(path.join(__dirname, "../../")));
-
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "../../index.html"));
-});
-
-// =======================
-// BANCO DE DADOS
-// =======================
 const { Pool } = require("pg");
 const bcrypt = require("bcrypt");
+require("dotenv").config();
 
+const app = express();
+app.use(express.json());
+
+// ================== CONFIGURAÇÃO DO CORS ==================
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5501",
+      "https://donuts-dreamland-real-6.onrender.com"
+    ],
+    methods: ["GET", "POST"],
+  })
+);
+
+// ================== CONEXÃO COM PostgreSQL (Render) ==================
 const pool = new Pool({
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_DATABASE,
-  ssl: { rejectUnauthorized: false } // Render usa SSL
+  connectionString: process.env.DATABASE_URL,
+  ssl: false  // <<<<<< AQUI ESTÁ O PROBLEMA! Render NÃO usa SSL.
 });
 
-// =======================
-// ROTA DE CADASTRO
-// =======================
+// Teste de conexão
+pool.connect()
+  .then(() => console.log("🟢 Conectado ao PostgreSQL!"))
+  .catch(err => console.error("🔴 ERRO AO CONECTAR NO BANCO:", err));
+
+// ================== ROTA DE CADASTRO ==================
 app.post("/cadastro", async (req, res) => {
   console.log("📩 Dados recebidos:", req.body);
 
   const { email, numero, senha } = req.body;
 
   if (!email || !numero || !senha) {
-    return res.status(400).json({ mensagem: "Preencha todos os campos!" });
+    return res.status(400).json({ erro: "Campos obrigatórios faltando!" });
   }
 
   try {
     const senhaCriptografada = await bcrypt.hash(senha, 10);
 
-    await pool.query(
-      "INSERT INTO usuario (email, numero, senha) VALUES ($1, $2, $3)",
-      [email, numero, senhaCriptografada]
-    );
+    const query = `
+      INSERT INTO usuarios (email, numero, senha)
+      VALUES ($1, $2, $3)
+      RETURNING id;
+    `;
 
-    res.json({ mensagem: "Usuário cadastrado com sucesso!" });
+    const result = await pool.query(query, [
+      email,
+      numero,
+      senhaCriptografada,
+    ]);
 
-  } catch (err) {
-    console.error("❌ ERRO NO BANCO:", err);
-    res.status(500).json({ mensagem: "Erro ao cadastrar usuário." });
+    console.log("✅ Usuário inserido com ID:", result.rows[0].id);
+
+    res.status(201).json({ mensagem: "Usuário cadastrado com sucesso!" });
+  } catch (erro) {
+    console.error("❌ ERRO NO BANCO:", erro);
+    res.status(500).json({ erro: "Erro interno no servidor." });
   }
 });
 
-// =======================
-// INICIAR SERVIDOR
-// =======================
+// ================== SERVIDOR ==================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
