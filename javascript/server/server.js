@@ -1,71 +1,91 @@
-// ================== IMPORTAÇÕES ==================
-const express = require("express");
-const cors = require("cors");
-const path = require("path");
-const { Pool } = require("pg");
-const bcrypt = require("bcrypt");
-require("dotenv").config();
-
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
 const app = express();
+app.use(cors({
+  origin: ['*']
+}))
 app.use(express.json());
 
-// ================== CONFIGURAÇÃO DO CORS ==================
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5501",
-      "https://donuts-dreamland-real-6.onrender.com"
-    ],
-    methods: ["GET", "POST"],
-  })
-);
+app.use(express.static(path.join(_dirname,'../../' )));
+ app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname,'../../index.html' ));
+ });
+ // ------------------------------
+// CONEXÃO COM O BANCO DE DADOS
+// ------------------------------
 
-// ================== CONEXÃO COM PostgreSQL (Render) ==================
+const { Pool } = require("pg");
+const bcrypt = require("bcrypt");
+
+// Usa variáveis de ambiente no Render ou configuração local
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: false  // <<<<<< AQUI ESTÁ O PROBLEMA! Render NÃO usa SSL.
+  user: process.env.DB_USER || "postgres",
+  password: process.env.DB_PASSWORD || "123456",
+  host: process.env.DB_HOST || "localhost",
+  port: process.env.DB_PORT || 5432,
+  database: process.env.DB_DATABASE || "donuts_dreamland",
+  ssl: process.env.DB_HOST ? { rejectUnauthorized: false } : false // SSL apenas no Render
 });
 
-// Teste de conexão
-pool.connect()
-  .then(() => console.log("🟢 Conectado ao PostgreSQL!"))
-  .catch(err => console.error("🔴 ERRO AO CONECTAR NO BANCO:", err));
+// ------------------------------
+// ROTAS DO CADASTRO
+// ------------------------------
 
-// ================== ROTA DE CADASTRO ==================
 app.post("/cadastro", async (req, res) => {
-  console.log("📩 Dados recebidos:", req.body);
+  console.log("📩 Dados recebidos do frontend:", req.body);
+  const {email, numero, senha} = req.body;
 
-  const { email, numero, senha } = req.body;
-
-  if (!email || !numero || !senha) {
-    return res.status(400).json({ erro: "Campos obrigatórios faltando!" });
+  if (!email || !numero|| !senha) {
+    console.log("Erro: algum campo está vazio");
+    return res.status(400).json({ mensagem: "Preencha todos os campos!" });
   }
 
   try {
     const senhaCriptografada = await bcrypt.hash(senha, 10);
-
-    const query = `
-      INSERT INTO usuarios (email, numero, senha)
-      VALUES ($1, $2, $3)
-      RETURNING id;
-    `;
-
-    const result = await pool.query(query, [
-      email,
-      numero,
-      senhaCriptografada,
-    ]);
-
-    console.log("✅ Usuário inserido com ID:", result.rows[0].id);
-
-    res.status(201).json({ mensagem: "Usuário cadastrado com sucesso!" });
-  } catch (erro) {
-    console.error("❌ ERRO NO BANCO:", erro);
-    res.status(500).json({ erro: "Erro interno no servidor." });
+    await pool.query(
+      "INSERT INTO usuario (email, numero, senha) VALUES ($1, $2, $3)",
+      [email, numero, senhaCriptografada]
+    );
+    res.json({ mensagem: "Usuário cadastrado com sucesso!" });
+  } catch (err) {
+    console.error("Erro no banco de dados:", err);
+    res.status(500).json({ mensagem: "Erro ao cadastrar usuário." });
   }
 });
 
-// ================== SERVIDOR ==================
+// ------------------------------
+// ROTA DE LOGIN DO CLIENTE
+// ------------------------------
+
+app.post("/login", async (req, res) => {
+  const { email, senha } = req.body;
+
+  try {
+    const result = await pool.query("SELECT * FROM usuario WHERE email = $1", [email]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ erro: "Usuário não encontrado" });
+    }
+
+    const usuario = result.rows[0];
+    const senhaCorreta = await bcrypt.compare(senha, usuario.senha);
+
+    if (!senhaCorreta) {
+      return res.status(401).json({ erro: "Senha incorreta" });
+    }
+
+    console.log("Usuário logado com sucesso:", usuario.nome);
+    res.json({ mensagem: "Login bem-sucedido", nome: usuario.nome });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ erro: "Erro ao fazer login" });
+  }
+});
+
+// ------------------------------
+// INICIA O SERVIDOR
+// ------------------------------
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
