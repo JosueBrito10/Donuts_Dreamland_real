@@ -7,7 +7,7 @@
 body {
     font-family: Arial, Helvetica, sans-serif;
     color: #fff;
-    background-image: url("../imagem/imagem de donuts pra fundo.png");
+    background-image: url("../imagem/fundodonuts.png");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -45,7 +45,7 @@ nav a {
     margin: 120px auto;
     text-align: center;
     padding: 20px;
-    background: rgba(0, 0, 0, 0.5);
+   
     border-radius: 15px;
 }
 
